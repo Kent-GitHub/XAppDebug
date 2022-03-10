@@ -128,10 +128,14 @@ public class HookMain implements IXposedHookLoadPackage {
 
     @SuppressLint("SdCardPath")
     private static boolean isDebuggable(final String packageName, int user) {
+        String trimPkg = packageName;
+        if (packageName.contains(":")) {
+            trimPkg = packageName.substring(0, packageName.indexOf(":"));
+        }
         final String path = String.format(
                 Locale.getDefault(),
                 CONFIG_PATH_FORMAT,
-                user, packageName
+                user, trimPkg
         );
 
         final StrictMode.ThreadPolicy oldPolicy = StrictMode.allowThreadDiskReads();
