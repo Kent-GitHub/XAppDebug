@@ -10,6 +10,7 @@ import static tw.idv.palatis.xappdebug.Constants.LOG_TAG;
 import android.annotation.SuppressLint;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
+import android.os.Build;
 import android.os.StrictMode;
 import android.os.UserHandle;
 
@@ -33,11 +34,109 @@ public class HookMain implements IXposedHookLoadPackage {
 
     private static final String PACKAGE_MANAGER_SERVICE_CLASS = "com.android.server.pm.PackageManagerService";
 
+    private static final String COMPUTER_ENGINE_CLASS = "com.android.server.pm.ComputerEngine";
+
     @Override
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         if (!"android".equals(lpparam.packageName))
             return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            apiEqualOrAboveTiramisu(lpparam);
+        } else {
+            apiUnderTiramisu(lpparam);
+        }
 
+        hookAllMethods(
+                android.os.Process.class,
+                "start",
+                new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        final String niceName = (String) param.args[1];
+                        final int uid = (int) param.args[2];
+                        final int runtimeFlags = (int) param.args[5];
+
+                        final int user = UserHandle.getUserHandleForUid(uid).hashCode();
+                        if (isDebuggable(niceName, user))
+                            param.args[5] = runtimeFlags | DEBUG_ENABLE_JDWP;
+                    }
+                }
+        );
+    }
+
+    private void apiEqualOrAboveTiramisu(XC_LoadPackage.LoadPackageParam lpparam) {
+        findAndHookMethod(
+                COMPUTER_ENGINE_CLASS,
+                lpparam.classLoader,
+                "getPackageInfoInternal",
+                String.class, long.class, long.class, int.class, int.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        try {
+                            final int userId = (int) param.args[4];
+                            final PackageInfo info = (PackageInfo) param.getResult();
+                            if (info == null)
+                                return;
+                            if (!isDebuggable(info.packageName, userId))
+                                return;
+                            info.applicationInfo.flags |= FLAG_DEBUGGABLE;
+                        } catch (Exception e) {
+                            XposedBridge.log(LOG_TAG + ": " + getStackTraceString(e));
+                        }
+                    }
+                }
+        );
+
+        findAndHookMethod(
+                COMPUTER_ENGINE_CLASS,
+                lpparam.classLoader,
+                "getApplicationInfoInternal",
+                String.class, long.class, int.class, int.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        try {
+                            final int userId = (int) param.args[3];
+                            final ApplicationInfo appInfo = (ApplicationInfo) param.getResult();
+                            if (appInfo == null)
+                                return;
+                            if (!isDebuggable(appInfo.packageName, userId))
+                                return;
+                            appInfo.flags |= FLAG_DEBUGGABLE;
+                        } catch (Exception e) {
+                            XposedBridge.log(LOG_TAG + ": " + getStackTraceString(e));
+                        }
+                    }
+                }
+        );
+
+        findAndHookMethod(
+                COMPUTER_ENGINE_CLASS,
+                lpparam.classLoader,
+                "getInstalledApplications",
+                long.class, int.class, int.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        try {
+                            final int userId = (int) param.args[1];
+                            final List<ApplicationInfo> infos = (List<ApplicationInfo>) param.getResult();
+                            if (infos == null)
+                                return;
+                            for (ApplicationInfo info : infos) {
+                                if (isDebuggable(info.packageName, userId))
+                                    info.flags |= FLAG_DEBUGGABLE;
+                            }
+                        } catch (Exception e) {
+                            XposedBridge.log(LOG_TAG + ": " + getStackTraceString(e));
+                        }
+                    }
+                }
+        );
+    }
+
+    private void apiUnderTiramisu(XC_LoadPackage.LoadPackageParam lpparam) {
         findAndHookMethod(
                 PACKAGE_MANAGER_SERVICE_CLASS,
                 lpparam.classLoader,
@@ -104,23 +203,6 @@ public class HookMain implements IXposedHookLoadPackage {
                         } catch (Exception e) {
                             XposedBridge.log(LOG_TAG + ": " + getStackTraceString(e));
                         }
-                    }
-                }
-        );
-
-        hookAllMethods(
-                android.os.Process.class,
-                "start",
-                new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        final String niceName = (String) param.args[1];
-                        final int uid = (int) param.args[2];
-                        final int runtimeFlags = (int) param.args[5];
-
-                        final int user = UserHandle.getUserHandleForUid(uid).hashCode();
-                        if (isDebuggable(niceName, user))
-                            param.args[5] = runtimeFlags | DEBUG_ENABLE_JDWP;
                     }
                 }
         );

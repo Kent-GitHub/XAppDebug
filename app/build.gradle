@@ -11,15 +11,15 @@ android {
     dataBinding {
         enabled true
     }
-    compileSdkVersion 31
+    compileSdkVersion 33
     buildToolsVersion "30.0.2"
 
     defaultConfig {
         applicationId "tw.idv.palatis.xappdebug"
         minSdkVersion 24
-        targetSdkVersion 31
-        versionCode 100006
-        versionName "1.0.6"
+        targetSdkVersion 33
+        versionCode 101007
+        versionName "1.01.007"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         project.ext.set("archivesBaseName", applicationId + "-" + versionName + "-" + versionCode)
